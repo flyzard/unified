@@ -19,6 +19,8 @@ Bun is build/dev tooling only. Cloudflare Workers run V8, not Bun runtime.
 
 ## Project layout
 
+Target shape. Only scaffolded files (`src/app.{d.ts,html}`, `src/routes/+{layout,page}.svelte`, `src/routes/layout.css`, `src/lib/assets/favicon.svg`) currently exist. Rest gets created per build order.
+
 ```
 src/
   app.d.ts                 # Locals types (session, db)
@@ -50,7 +52,7 @@ src/
 drizzle/
   0000_init.sql
 drizzle.config.ts
-wrangler.toml              # D1 binding
+wrangler.jsonc             # D1 binding
 .dev.vars                  # Local env vars (gitignored)
 ```
 
@@ -149,13 +151,20 @@ Use `crypto.subtle` (Web Crypto, available in Workers) for HMAC. Do **not** add 
 
 ## Local development
 
-Scaffold:
+Scaffold (already done — recorded for reproducibility):
 
 ```bash
-bun create svelte@latest .
-bun add -d @sveltejs/adapter-cloudflare drizzle-orm drizzle-kit
-bun add -d wrangler @cloudflare/workers-types
-bun add -d tailwindcss @tailwindcss/vite
+bunx sv create . --template minimal --types ts --no-dir-check --no-install \
+  --add sveltekit-adapter=adapter:cloudflare+cfTarget:pages \
+  --add tailwindcss=plugins:none
+bun install
+```
+
+Drizzle (add when starting build-order step 3 — schema + projects CRUD):
+
+```bash
+bun add drizzle-orm
+bun add -d drizzle-kit
 ```
 
 D1 + migrations:
@@ -176,15 +185,22 @@ APP_PASSWORD=whatever
 SESSION_SECRET=<openssl rand -hex 32>
 ```
 
-`wrangler.toml`:
-```toml
-name = "timetracker"
-compatibility_date = "2024-09-01"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "timetracker-db"
-database_id = "<from wrangler d1 create>"
+`wrangler.jsonc` (add D1 binding to scaffolded file):
+```jsonc
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "timetracker",
+  "compatibility_date": "2026-05-05",
+  "compatibility_flags": ["nodejs_als"],
+  "pages_build_output_dir": ".svelte-kit/cloudflare",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "timetracker-db",
+      "database_id": "<from wrangler d1 create>"
+    }
+  ]
+}
 ```
 
 ## Deployment

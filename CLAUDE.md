@@ -1,3 +1,11 @@
+## Project Configuration
+
+- **Language**: TypeScript
+- **Package Manager**: bun
+- **Add-ons**: sveltekit-adapter, tailwindcss
+
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -23,7 +31,7 @@ SvelteKit (Svelte 5) + adapter-cloudflare → Cloudflare Pages + D1 + Drizzle + 
 | Drizzle schema, types, indexes | `arquitecture.md` §Database schema |
 | Active-timer transaction code | `arquitecture.md` §One running timer |
 | Auth flow, cookie format, HMAC | `arquitecture.md` §Auth |
-| Env vars, `.dev.vars`, `wrangler.toml` | `arquitecture.md` §Environment / §Local development |
+| Env vars, `.dev.vars`, `wrangler.jsonc` | `arquitecture.md` §Environment / §Local development |
 | Bun commands, migration commands | `arquitecture.md` §Local development / §Deployment |
 | Project layout (folders) | `arquitecture.md` §Project layout |
 | Build order | `arquitecture.md` §Build order |
