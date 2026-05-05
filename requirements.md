@@ -1,93 +1,84 @@
 # Time Tracker — Requirements
 
-A personal time tracker. Single user, password-protected. SvelteKit on Cloudflare Pages, free tier.
+Personal time tracker. Single user, password-protected. Stack details in `arquitecture.md`.
 
 ## Goals
 
-- Know where your time goes across projects.
-- Track time live (start/stop) **or** log it after the fact.
+- Know where time goes across projects.
+- Track live (start/stop) **or** log after the fact.
 - Edit and annotate entries without friction.
-- Stay deployable on Cloudflare's free tier indefinitely.
+- Stay on Cloudflare free tier indefinitely.
 
-## Non-goals (deliberate)
+## Non-goals
 
 - Multi-user, teams, sharing, permissions.
-- Invoicing, billable rates, client management.
-- Integrations (Toggl import, calendar sync, GitHub, Slack).
-- Pomodoro, idle detection, screenshots, "productivity scoring".
-- Native or mobile apps. The web app must be usable on mobile, but that's it.
-- Reports, charts, CSV export. *Not in v1.* Easy to add later once data exists.
+- Invoicing, billable rates, clients.
+- Integrations (Toggl, calendar, GitHub, Slack).
+- Pomodoro, idle detection, screenshots, productivity scoring.
+- Native/mobile apps. Web must work on mobile, that's it.
+- Reports, charts, CSV export. Not v1.
 
-If you find yourself wanting any of these mid-build, write it down and keep going.
+Want any of these mid-build → write down, keep going.
 
-## Data model
+## Data model (concept)
 
-Three tables. No more.
+Three tables. No more. Field types/constraints in `arquitecture.md` §Database schema.
 
-**`projects`** — `id`, `name`, `description` (nullable), `archived` (bool), `created_at`.
+- **`projects`** — name, optional description, archive flag.
+- **`tasks`** — belong to a project. Have done flag. Soft-deletable.
+- **`time_entries`** — belong to a task. Have start, optional end (null = running), optional note. Soft-deletable.
 
-**`tasks`** — `id`, `project_id` (FK), `name`, `description` (nullable), `done` (bool), `created_at`. A task always belongs to a project.
+Time always logged against a task, never a bare project. Want "general project work" → make a task called `general`.
 
-**`time_entries`** — `id`, `task_id` (FK), `started_at`, `ended_at` (nullable — null means timer is currently running), `note` (nullable), `created_at`. Time is always logged against a task, not a bare project. This keeps the model simple — if you want to log "general project work", make a task called "general".
+## Active timer rule
 
-**Active timer rule:** at most one entry across the whole DB has `ended_at = NULL`. The UI enforces this; starting a new timer auto-stops any running one.
+At most one `time_entries` row across the DB has `ended_at = NULL`. Starting a new timer auto-stops any running one. Implementation: `arquitecture.md` §One running timer.
 
 ## Auth
 
-Single password, set via an environment variable (`APP_PASSWORD`). Login posts the password; server compares and sets a signed, HTTP-only session cookie. No user table, no password reset flow, no email. If you forget it, redeploy with a new env var.
+Single password via `APP_PASSWORD` env var. Login posts password → server compares → sets signed httpOnly session cookie. No user table, no reset flow, no email. Forgot it → redeploy with new env var. Implementation: `arquitecture.md` §Auth.
 
-This is the right level of security for a personal tool. Don't build OAuth.
+## Routes (user-facing)
 
-## Routes (SvelteKit)
-
-Pages:
 - `/login` — password form.
-- `/` — dashboard. Shows the currently-running timer (if any) and a list of recent entries. Big "start timer" affordance with a task picker.
-- `/projects` — list of projects, create new.
-- `/projects/[id]` — project detail. Shows its tasks, total time spent on the project, and lets you add tasks.
-- `/projects/[id]/tasks/[taskId]` — task detail. Shows entries for this task, lets you add manual entries, edit notes, delete entries.
+- `/` — dashboard. Running timer (if any) + recent entries + start-timer affordance with task picker.
+- `/projects` — list + create.
+- `/projects/[id]` — project detail. Tasks, total time, add tasks.
+- `/projects/[id]/tasks/[taskId]` — task detail. Entries, add manual, edit notes, delete.
 
-Server actions handle all mutations (form actions, no separate API). Auth check lives in `hooks.server.ts`.
+All mutations via SvelteKit form actions. No separate API.
 
 ## MVP feature checklist
 
-1. Login with password, logout.
+1. Login, logout.
 2. Create / rename / archive / unarchive projects.
 3. Create / rename / mark-done tasks under a project.
 4. Start timer on a task → stops any other running timer.
-5. Stop the running timer.
-6. Add a manual entry (pick task, set start + end, optional note).
-7. Edit any past entry (times, note, reassign to a different task).
+5. Stop running timer.
+6. Add manual entry (pick task, set start + end, optional note).
+7. Edit any past entry (times, note, reassign task).
 8. Soft-delete any past entry. Soft-delete any task (cascades to its entries).
-9. On project page: total time per task, total for the project. Display as `H:MM`.
-10. On task page: list of entries with notes, newest first. Display durations as `H:MM`.
+9. Project page: total time per task, total for project. `H:MM`.
+10. Task page: entries with notes, newest first. Durations `H:MM`.
 
-That's it. If something isn't on this list, it's v2.
+Not on this list → v2.
 
 ## UX rules (locked)
 
-- **Time format:** always `H:MM` (e.g. `0:05`, `1:30`, `12:34`). Never decimals, never seconds.
-- **Week starts Monday.** Only matters when weekly summaries arrive (post-v1).
-- **Deletes are soft.** A "deleted" entry is hidden from all views but recoverable via SQL. No undo UI in v1 — the soft-delete is your safety net, not a user feature.
-- **Task picker shows archived projects' tasks greyed-out at the bottom.** Don't hide them; you'll occasionally need to log time against a just-archived project.
-
-## Stack
-
-- **SvelteKit** with `@sveltejs/adapter-cloudflare`.
-- **Cloudflare Pages** for hosting (free, generous limits).
-- **Cloudflare D1** (SQLite) for the database. Free tier covers this easily.
-- **Drizzle ORM** for schema + migrations. Lightweight, types are good, Cloudflare-friendly.
-- **Tailwind** for styling — fastest path to "looks fine, not ugly".
-- No client-side state library. Svelte stores + form actions are enough.
+- **Time format `H:MM`** everywhere (`0:05`, `1:30`, `12:34`). Never decimals, never seconds.
+- **Week starts Monday.** Only matters post-v1 (weekly summaries).
+- **Deletes are soft.** Hidden from all views, recoverable via SQL. No undo UI in v1 — soft-delete is safety net, not user feature.
+- **Archived projects' tasks** appear in task picker greyed-out at bottom. Don't hide. Sometimes you log time against a just-archived project.
+- **Cascade rule:** deleting a task soft-deletes its entries. Archiving a project does **not** soft-delete its tasks (archive is reversible, data stays queryable). Projects use `archived` flag, not `deleted_at` — archive *is* the project soft-delete.
 
 ## Things that will tempt you. Don't.
 
-- Building a "flexible tagging system". You picked tasks-under-projects; that's the taxonomy.
-- Adding a rich-text editor for notes. Plain textarea.
-- Realtime sync across tabs. Refresh works.
-- A separate "today view" / "week view" / "month view". One list, filter later.
-- Writing your own auth. The single-password approach above is the whole auth system.
+- "Flexible tagging system". You picked tasks-under-projects. That's the taxonomy.
+- Rich-text editor for notes. Plain textarea.
+- Realtime cross-tab sync. Refresh works.
+- Separate today/week/month views. One list, filter later.
+- Custom auth schemes beyond the single password above.
 
-## What "done" looks like for v1
+## Done (v1)
 
-You can deploy it, log in from your phone, start a timer for a task on a project, stop it later, and see how much time you spent on that project this week by glancing at the project page. Then you actually use it for two weeks before adding anything.
+Deploy. Log in from phone. Start timer for task on project. Stop later. Glance at project page → see week's time. Then actually use it for two weeks before adding anything.

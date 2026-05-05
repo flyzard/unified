@@ -1,19 +1,21 @@
 # Architecture & Technical Decisions
 
-Companion to `REQUIREMENTS.md`. This is the "how", not the "what".
+The *how*. The *what* lives in `requirements.md`.
 
-## Stack, locked in
+## Stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| Framework | SvelteKit (latest, Svelte 5) | Server actions, runs on Workers, single deployable unit |
-| Adapter | `@sveltejs/adapter-cloudflare` | Required for Pages/Workers deploy |
+| Framework | SvelteKit (Svelte 5) | Server actions, runs on Workers, single deployable |
+| Adapter | `@sveltejs/adapter-cloudflare` | Required for Pages/Workers |
 | Hosting | Cloudflare Pages | Free, generous limits, zero-config CI from Git |
-| Database | Cloudflare D1 (SQLite) | Free tier, SQL, edge-replicated, bound to Worker |
-| ORM | Drizzle | Lightweight, typed, has D1 driver, migrations work |
-| Styling | Tailwind CSS v4 | Fast to write, no design bikeshedding |
-| Auth | Custom — signed cookie, single password | One env var, ~30 lines |
-| Package manager | pnpm | Fastest installs; npm is fine if you prefer |
+| Database | Cloudflare D1 (SQLite) | Free tier, edge-replicated, bound to Worker |
+| ORM | Drizzle | Lightweight, typed, D1 driver, migrations work |
+| Styling | Tailwind CSS v4 | Fast, no design bikeshedding |
+| Auth | Custom HMAC cookie | One env var, ~30 LOC |
+| Package manager / runtime tooling | Bun | Fast installs, fast scripts |
+
+Bun is build/dev tooling only. Cloudflare Workers run V8, not Bun runtime.
 
 ## Project layout
 
@@ -32,41 +34,34 @@ src/
       Timer.svelte
       EntryRow.svelte
       ProjectCard.svelte
+    format.ts              # formatDuration(ms) → "H:MM"
   routes/
     +layout.svelte
     +layout.server.ts      # Redirect to /login if no session
     login/
-      +page.svelte
-      +page.server.ts      # Form action: verify password, set cookie
-    +page.svelte           # Dashboard
-    +page.server.ts        # Load active timer + recent entries
+      +page.{svelte,server.ts}
+    +page.{svelte,server.ts}                            # Dashboard
     projects/
-      +page.svelte
-      +page.server.ts      # List + create action
+      +page.{svelte,server.ts}                          # List + create
       [id]/
-        +page.svelte
-        +page.server.ts    # Project detail, task CRUD
-        tasks/
-          [taskId]/
-            +page.svelte
-            +page.server.ts  # Task detail, entry CRUD
+        +page.{svelte,server.ts}                        # Detail, task CRUD
+        tasks/[taskId]/
+          +page.{svelte,server.ts}                      # Task detail, entry CRUD
 drizzle/
-  0000_init.sql            # Generated migration
+  0000_init.sql
 drizzle.config.ts
-wrangler.toml              # D1 binding config
+wrangler.toml              # D1 binding
 .dev.vars                  # Local env vars (gitignored)
 ```
-
-Don't add folders until you need them. No `src/lib/utils/` graveyard.
 
 ## Environment variables
 
 Two, both required:
 
-- `APP_PASSWORD` — the login password. Set in Cloudflare Pages → Settings → Environment variables. For local dev, put it in `.dev.vars`.
-- `SESSION_SECRET` — random 32+ byte string for signing the session cookie. Generate with `openssl rand -hex 32`. Same locations.
+- `APP_PASSWORD` — login password. Pages → Settings → Environment variables. Local: `.dev.vars`.
+- `SESSION_SECRET` — 32+ byte random for HMAC. Generate: `openssl rand -hex 32`. Same locations.
 
-If you ever want to rotate the password, change `APP_PASSWORD` and redeploy. If you rotate `SESSION_SECRET`, all existing sessions invalidate (which is the point).
+Rotate password → change `APP_PASSWORD`, redeploy. Rotate `SESSION_SECRET` → all sessions invalidate.
 
 ## Database schema (Drizzle, SQLite dialect)
 
@@ -104,25 +99,25 @@ export const timeEntries = sqliteTable('time_entries', {
 });
 ```
 
-**Times are stored as ISO 8601 UTC strings.** D1's date support is awkward; strings are simplest and sort correctly. Convert in JS when displaying.
+**Times = ISO 8601 UTC strings.** D1 date support is awkward; strings are simplest, sort correctly. Convert in JS for display.
 
-**Soft-delete rule:** every query that reads tasks or entries must filter `WHERE deleted_at IS NULL`. Centralize this in `queries.ts` so individual routes can't forget. The "running timer" query becomes `WHERE ended_at IS NULL AND deleted_at IS NULL`.
+**Soft-delete columns are mandatory.** Every read of `tasks` or `time_entries` filters `WHERE deleted_at IS NULL`. Centralize in `queries.ts` so routes can't forget. Running-timer query: `WHERE ended_at IS NULL AND deleted_at IS NULL`.
 
-**Indexes worth adding** in the migration: `time_entries(task_id, deleted_at)`, `time_entries(ended_at)` (partial index where `ended_at IS NULL` if D1 supports it; otherwise plain), `tasks(project_id, deleted_at)`.
+**Indexes (initial migration):**
+- `time_entries(task_id, deleted_at)`
+- `time_entries(ended_at)` — partial `WHERE ended_at IS NULL` if D1 supports it, else plain
+- `tasks(project_id, deleted_at)`
 
-## The "one running timer" invariant
+## One running timer
 
-The only piece of real business logic. Implement in `queries.ts`:
+Only real business logic. Single transaction in `queries.ts`:
 
 ```ts
-// pseudocode
 export async function startTimer(db, taskId: number) {
   await db.transaction(async (tx) => {
-    // Stop any currently running timer
     await tx.update(timeEntries)
       .set({ endedAt: new Date().toISOString() })
       .where(isNull(timeEntries.endedAt));
-    // Start new one
     await tx.insert(timeEntries).values({
       taskId,
       startedAt: new Date().toISOString()
@@ -131,55 +126,54 @@ export async function startTimer(db, taskId: number) {
 }
 ```
 
-D1 supports transactions via `db.batch()` in production (the Drizzle `transaction()` helper compiles to it). Test this — it's the single most important correctness property of the app.
+D1 supports transactions via `db.batch()`; Drizzle's `transaction()` compiles to it. Test this — it's the single most important correctness property.
 
-## Auth, in full
+## Auth
 
-```ts
-// Login flow:
-// 1. POST /login with password field
-// 2. Server: timing-safe compare against APP_PASSWORD
-// 3. If match: create cookie value = `${expiry}.${hmac(SESSION_SECRET, expiry)}`
-// 4. Set cookie: httpOnly, secure, sameSite=lax, path=/, maxAge=30 days
-// 5. Redirect to /
+```
+Login flow:
+1. POST /login with password field.
+2. Server: timing-safe compare against APP_PASSWORD.
+3. Match → cookie value = `${expiry}.${hmac(SESSION_SECRET, expiry)}`.
+4. Set cookie: httpOnly, secure, sameSite=lax, path=/, maxAge=30 days.
+5. Redirect to /.
 
-// On every request (hooks.server.ts):
-// 1. Read cookie, split on '.'
-// 2. Verify HMAC, check expiry
-// 3. If valid: locals.session = { authenticated: true }
-// 4. If route !== /login and not authenticated: redirect to /login
+Per request (hooks.server.ts):
+1. Read cookie, split on '.'.
+2. Verify HMAC, check expiry.
+3. Valid → locals.session = { authenticated: true }.
+4. Route !== /login and not authenticated → redirect to /login.
 ```
 
-Use `crypto.subtle` (Web Crypto, available in Workers) for the HMAC. Don't pull in `jsonwebtoken` or similar — overkill.
+Use `crypto.subtle` (Web Crypto, available in Workers) for HMAC. Do **not** add `jsonwebtoken` or similar.
 
 ## Local development
 
+Scaffold:
+
 ```bash
-pnpm create svelte@latest .          # Skeleton, TypeScript, no other extras
-pnpm add -D @sveltejs/adapter-cloudflare drizzle-orm drizzle-kit
-pnpm add -D wrangler @cloudflare/workers-types
-pnpm add -D tailwindcss @tailwindcss/vite
+bun create svelte@latest .
+bun add -d @sveltejs/adapter-cloudflare drizzle-orm drizzle-kit
+bun add -d wrangler @cloudflare/workers-types
+bun add -d tailwindcss @tailwindcss/vite
 ```
 
-Then:
+D1 + migrations:
 
 ```bash
-# Create local D1 database
-npx wrangler d1 create timetracker-db
-# Copy the database_id it prints into wrangler.toml
+bunx wrangler d1 create timetracker-db
+# Copy database_id into wrangler.toml.
 
-# Generate and apply migrations locally
-npx drizzle-kit generate
-npx wrangler d1 execute timetracker-db --local --file=./drizzle/0000_init.sql
+bunx drizzle-kit generate
+bunx wrangler d1 execute timetracker-db --local --file=./drizzle/0000_init.sql
 
-# Run dev server (uses local D1 via miniflare)
-pnpm dev
+bun run dev
 ```
 
 `.dev.vars` (gitignored):
 ```
 APP_PASSWORD=whatever
-SESSION_SECRET=<output of openssl rand -hex 32>
+SESSION_SECRET=<openssl rand -hex 32>
 ```
 
 `wrangler.toml`:
@@ -196,38 +190,27 @@ database_id = "<from wrangler d1 create>"
 ## Deployment
 
 1. Push to GitHub.
-2. In Cloudflare dashboard: Pages → Connect to Git → pick the repo.
-3. Build command: `pnpm build`. Output dir: `.svelte-kit/cloudflare`.
-4. In Pages settings, bind the D1 database (same name `DB`).
-5. Add `APP_PASSWORD` and `SESSION_SECRET` as environment variables (Production).
-6. Run the migration against the production DB once:
-   `npx wrangler d1 execute timetracker-db --remote --file=./drizzle/0000_init.sql`
+2. Cloudflare dashboard: Pages → Connect to Git → pick repo.
+3. Build command: `bun run build`. Output dir: `.svelte-kit/cloudflare`.
+4. Pages settings: bind D1 database (binding name `DB`).
+5. Add `APP_PASSWORD` and `SESSION_SECRET` (Production).
+6. Run migration once against prod DB:
+   `bunx wrangler d1 execute timetracker-db --remote --file=./drizzle/0000_init.sql`
 7. Deploy.
 
-Future schema changes: generate a new migration with `drizzle-kit generate`, run it with `--remote`. There's no automated migration runner — that's fine for a one-person app, just don't forget the step.
+Future schema changes: `bunx drizzle-kit generate`, run with `--remote`. No automated runner — fine for one-person app, just don't forget the step.
 
-## Free tier reality check
+## Build order
 
-Cloudflare Pages free tier (as of writing): 100k requests/day, unlimited bandwidth. D1 free tier: 5 GB storage, 5M reads/day, 100k writes/day. A personal time tracker uses roughly none of this. You will not hit limits.
+Sequence keeps you unblocked:
 
-## Build order (suggested)
+1. **Scaffold + deploy hello-world.** SvelteKit → Pages pipeline before anything else.
+2. **Auth.** Login, hooks, logout. Confirm in production.
+3. **Schema + projects CRUD.** No tasks, no timers yet.
+4. **Tasks under projects.** Same shape.
+5. **Manual time entries.** No timer yet — form to log past entry on a task.
+6. **Live timer.** Start/stop, transactional invariant, dashboard widget.
+7. **Edit/delete entries.** Last, least critical — SQL works in a pinch.
+8. **Polish.** Total-time displays, mobile layout.
 
-Don't try to build everything in parallel. This sequence keeps you unblocked:
-
-1. **Scaffold + deploy a "hello world".** Get the SvelteKit → Pages pipeline working before anything else. One afternoon.
-2. **Auth.** Login page, hooks, logout. Confirm it works in production.
-3. **Schema + projects CRUD.** No tasks, no timers yet. Just create/list/rename/archive projects.
-4. **Tasks under projects.** Same shape as projects.
-5. **Manual time entries.** No timer yet — just a form to log a past entry on a task.
-6. **Live timer.** Start/stop, the transactional invariant, dashboard widget.
-7. **Edit/delete entries.** Last because it's the least critical — you can delete via SQL in a pinch.
-8. **Polish.** Total-time displays, sensible mobile layout.
-
-After step 6 you have a usable app. Steps 7–8 are where premature feature creep lives — be ruthless.
-
-## Locked decisions
-
-1. **Time display:** HH:MM. Format helper goes in `src/lib/format.ts`. `formatDuration(ms)` returns `"1:30"`, `"0:05"`, `"12:34"`. No seconds.
-2. **Week start:** Monday. Use `date-fns` with `{ weekStartsOn: 1 }` if/when weekly views land. Not needed for v1.
-3. **Deletes are soft.** Add `deleted_at` (nullable timestamp) to `tasks` and `time_entries`. Every read query filters `WHERE deleted_at IS NULL`. Projects already have `archived` — don't add a second flag, archive *is* the project-level soft-delete. Cascade: deleting a task soft-deletes its entries; archiving a project does **not** soft-delete its tasks (archive is reversible, the data stays queryable).
-4. **Archived projects in the task picker:** show their tasks greyed-out and at the bottom of the list, not hidden. You can still log time against them (sometimes you remember a session from last week on a project you just archived).
+After step 6 = usable app. Steps 7–8 = creep zone. Be ruthless.
