@@ -10,7 +10,7 @@
 	);
 	$effect(() => {
 		if (!data.running) return;
-		const id = setInterval(() => (now = Date.now()), 30_000);
+		const id = setInterval(() => (now = Date.now()), 1_000);
 		return () => clearInterval(id);
 	});
 </script>

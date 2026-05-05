@@ -65,7 +65,7 @@ Not on this list → v2.
 
 ## UX rules (locked)
 
-- **Time format `H:MM`** everywhere (`0:05`, `1:30`, `12:34`). Never decimals, never seconds.
+- **Time format `H:MM:SS`** everywhere (`0:00:30`, `1:30:00`, `12:34:56`). Never decimals.
 - **Week starts Monday.** Only matters post-v1 (weekly summaries).
 - **Deletes are soft.** Hidden from all views, recoverable via SQL. No undo UI in v1 — soft-delete is safety net, not user feature.
 - **Archived projects' tasks** appear in task picker greyed-out at bottom. Don't hide. Sometimes you log time against a just-archived project.

@@ -22,14 +22,9 @@
 
 	$effect(() => {
 		if (!runningTaskInList) return;
-		const id = setInterval(() => (now = Date.now()), 30_000);
+		const id = setInterval(() => (now = Date.now()), 1_000);
 		return () => clearInterval(id);
 	});
-
-	function liveSecForTask(taskId: number): number {
-		const stored = data.totalSecByTask[taskId] ?? 0;
-		return runningTaskId === taskId ? stored + runningElapsedSec : stored;
-	}
 
 	function commitRename(e: FocusEvent & { currentTarget: HTMLInputElement }) {
 		const input = e.currentTarget;
@@ -139,7 +134,10 @@
 					class:text-emerald-300={runningTaskId === t.id}
 					class:text-zinc-500={runningTaskId !== t.id}
 				>
-					{formatDuration(liveSecForTask(t.id) * 1000)}
+					{formatDuration(
+						(data.totalSecByTask[t.id] ?? 0) * 1000 +
+							(runningTaskId === t.id ? runningElapsedSec * 1000 : 0)
+					)}
 				</span>
 				{#if runningTaskId === t.id}
 					<form method="POST" action="?/stop" use:enhance>
