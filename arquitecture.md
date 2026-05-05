@@ -36,7 +36,7 @@ src/
       Timer.svelte
       EntryRow.svelte
       ProjectCard.svelte
-    format.ts              # formatDuration(ms) → "H:MM"
+    format.ts              # formatDuration(ms) → "H:MM:SS"
   routes/
     +layout.svelte
     +layout.server.ts      # Redirect to /login if no session

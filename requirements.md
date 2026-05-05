@@ -58,8 +58,8 @@ All mutations via SvelteKit form actions. No separate API.
 6. Add manual entry (pick task, set start + end, optional note).
 7. Edit any past entry (times, note, reassign task).
 8. Soft-delete any past entry. Soft-delete any task (cascades to its entries).
-9. Project page: total time per task, total for project. `H:MM`.
-10. Task page: entries with notes, newest first. Durations `H:MM`.
+9. Project page: total time per task, total for project. `H:MM:SS`.
+10. Task page: entries with notes, newest first. Durations `H:MM:SS`.
 
 Not on this list → v2.
 
