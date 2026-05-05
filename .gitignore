@@ -19,6 +19,9 @@ Thumbs.db
 !.env.test
 .dev.vars
 
+# Wrangler-generated types
+worker-configuration.d.ts
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
