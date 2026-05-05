@@ -1,6 +1,6 @@
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail, redirect } from '@sveltejs/kit';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { parseId, requireDb } from '$lib/server/db';
 import { projects, tasks, timeEntries } from '$lib/server/schema';
 import {
@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 	if (projectIdNum === null || taskIdNum === null) throw error(400, 'bad id');
 
 	const db = requireDb(platform);
-	const [task, [project], entries, running, pickerTasks] = await Promise.all([
+	const [task, [project], entries, running, pickerTasks, totals] = await Promise.all([
 		getTaskInProject(db, projectIdNum, taskIdNum),
 		db.select().from(projects).where(eq(projects.id, projectIdNum)),
 		db
@@ -44,12 +44,28 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 			.orderBy(desc(timeEntries.startedAt))
 			.limit(ENTRIES_LIMIT),
 		getRunningEntry(db),
-		listTasksForPicker(db)
+		listTasksForPicker(db),
+		db
+			.select({
+				totalSec: sql<number>`SUM(strftime('%s', ${timeEntries.endedAt}) - strftime('%s', ${timeEntries.startedAt}))`,
+				count: sql<number>`COUNT(*)`
+			})
+			.from(timeEntries)
+			.where(
+				and(
+					eq(timeEntries.taskId, taskIdNum),
+					isNull(timeEntries.deletedAt),
+					isNotNull(timeEntries.endedAt)
+				)
+			)
 	]);
 	if (!task) throw error(404, 'task not found');
 	if (!project) throw error(404, 'project not found');
 
-	return { project, task, entries, running, pickerTasks };
+	const totalSec = Number(totals[0]?.totalSec) || 0;
+	const entryCount = Number(totals[0]?.count) || 0;
+
+	return { project, task, entries, running, pickerTasks, totalSec, entryCount };
 };
 
 export const actions: Actions = {
@@ -59,21 +75,15 @@ export const actions: Actions = {
 		if (projectIdNum === null || taskIdNum === null) return fail(400, { error: 'bad id' });
 
 		const db = requireDb(platform);
+		const task = await getTaskInProject(db, projectIdNum, taskIdNum);
+		if (!task) return fail(404, { error: 'task not found' });
+
 		const data = await request.formData();
 		const name = String(data.get('name') ?? '').trim();
 		const description = String(data.get('description') ?? '').trim() || null;
 		if (!name) return fail(400, { error: 'name required' });
 
-		await db
-			.update(tasks)
-			.set({ name, description })
-			.where(
-				and(
-					eq(tasks.id, taskIdNum),
-					eq(tasks.projectId, projectIdNum),
-					isNull(tasks.deletedAt)
-				)
-			);
+		await db.update(tasks).set({ name, description }).where(eq(tasks.id, taskIdNum));
 		return { ok: true };
 	},
 

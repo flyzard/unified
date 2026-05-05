@@ -1,1 +1,86 @@
 @import 'tailwindcss';
+
+@layer base {
+	:root {
+		color-scheme: dark;
+	}
+	html,
+	body {
+		background-color: #0a0a0b;
+	}
+	body {
+		@apply text-zinc-100 antialiased;
+		font-family:
+			ui-sans-serif,
+			system-ui,
+			-apple-system,
+			'Segoe UI',
+			Roboto,
+			'Helvetica Neue',
+			Arial,
+			sans-serif;
+		font-feature-settings: 'cv11', 'ss01';
+	}
+	input,
+	textarea,
+	select,
+	button {
+		color-scheme: dark;
+	}
+	::selection {
+		background-color: rgb(99 102 241 / 0.35);
+	}
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	::-webkit-scrollbar-thumb {
+		background: rgb(63 63 70);
+		border-radius: 6px;
+		border: 2px solid #0a0a0b;
+	}
+	::-webkit-scrollbar-thumb:hover {
+		background: rgb(82 82 91);
+	}
+}
+
+@layer components {
+	.btn-primary,
+	.btn-success,
+	.btn-danger,
+	.btn-ghost,
+	.btn-outline,
+	.btn-danger-outline {
+		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition select-none disabled:cursor-not-allowed disabled:opacity-50;
+	}
+	.btn-primary {
+		@apply bg-indigo-500 text-white shadow-sm shadow-indigo-500/20 hover:bg-indigo-400 active:bg-indigo-600;
+	}
+	.btn-success {
+		@apply bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-400;
+	}
+	.btn-danger {
+		@apply bg-rose-500 text-white shadow-sm shadow-rose-500/20 hover:bg-rose-400;
+	}
+	.btn-ghost {
+		@apply text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100;
+	}
+	.btn-outline {
+		@apply border border-zinc-700 bg-zinc-900/40 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-800/60;
+	}
+	.btn-danger-outline {
+		@apply border border-rose-500/40 text-rose-400 hover:border-rose-500/70 hover:bg-rose-500/10;
+	}
+	.input {
+		@apply w-full rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 transition focus:border-indigo-400/60 focus:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/20;
+	}
+	.input-heading {
+		@apply w-full rounded-md border border-transparent bg-transparent px-3 py-2 text-2xl font-semibold tracking-tight text-zinc-50 transition hover:border-zinc-800 hover:bg-zinc-900/50 focus:border-indigo-400/60 focus:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/20;
+	}
+	.card {
+		@apply rounded-xl border border-zinc-800 bg-zinc-900/40 shadow-sm shadow-black/20;
+	}
+	.alert-error {
+		@apply rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300;
+	}
+}

@@ -3,13 +3,14 @@ import { error, fail } from '@sveltejs/kit';
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { parseId, requireDb } from '$lib/server/db';
 import { projects, tasks, timeEntries } from '$lib/server/schema';
+import { getRunningEntry, getTaskInProject, startTimer, stopTimer } from '$lib/server/queries';
 
 export const load: PageServerLoad = async ({ params, platform }) => {
 	const id = parseId(params.id);
 	if (id === null) throw error(400, 'bad id');
 
 	const db = requireDb(platform);
-	const [[project], taskRows, totals] = await Promise.all([
+	const [[project], taskRows, totals, running] = await Promise.all([
 		db.select().from(projects).where(eq(projects.id, id)),
 		db
 			.select()
@@ -31,7 +32,8 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 					isNotNull(timeEntries.endedAt)
 				)
 			)
-			.groupBy(timeEntries.taskId)
+			.groupBy(timeEntries.taskId),
+		getRunningEntry(db)
 	]);
 	if (!project) throw error(404, 'project not found');
 
@@ -43,7 +45,7 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 		projectTotalSec += sec;
 	}
 
-	return { project, tasks: taskRows, totalSecByTask, projectTotalSec };
+	return { project, tasks: taskRows, totalSecByTask, projectTotalSec, running };
 };
 
 export const actions: Actions = {
@@ -79,6 +81,25 @@ export const actions: Actions = {
 			.update(tasks)
 			.set({ done })
 			.where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt)));
+		return { ok: true };
+	},
+
+	start: async ({ params, request, platform }) => {
+		const projectId = parseId(params.id);
+		if (projectId === null) return fail(400, { error: 'bad project id' });
+		const db = requireDb(platform);
+		const data = await request.formData();
+		const taskId = parseId(data.get('taskId')?.toString());
+		if (taskId === null) return fail(400, { error: 'bad task id' });
+		const task = await getTaskInProject(db, projectId, taskId);
+		if (!task) return fail(404, { error: 'task not found' });
+		await startTimer(db, taskId);
+		return { ok: true };
+	},
+
+	stop: async ({ platform }) => {
+		const db = requireDb(platform);
+		await stopTimer(db);
 		return { ok: true };
 	}
 };
