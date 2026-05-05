@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "timetracker",
+    "name": "unified",
 	"compatibility_date": "2026-05-05",
 	"compatibility_flags": [
 		"nodejs_als"
