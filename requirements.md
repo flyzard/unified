@@ -41,10 +41,10 @@ Single password via `APP_PASSWORD` env var. Login posts password → server comp
 ## Routes (user-facing)
 
 - `/login` — password form.
-- `/` — dashboard. Running timer (if any) + recent entries + start-timer affordance with task picker.
-- `/projects` — list + create.
-- `/projects/[id]` — project detail. Tasks, total time, add tasks.
-- `/projects/[id]/tasks/[taskId]` — task detail. Entries, add manual, edit notes, delete.
+- `/` — redirects to `/projects`.
+- `/projects` — landing page. Running-timer widget at top (if any) + Stop button. Project list, create, archive/unarchive. Logout.
+- `/projects/[id]` — project detail. Tasks list (+ per-task and project totals), add task, rename/done/delete-task.
+- `/projects/[id]/tasks/[taskId]` — task detail. Start/Stop timer for this task, add manual entry, edit/reassign/delete entry.
 
 All mutations via SvelteKit form actions. No separate API.
 

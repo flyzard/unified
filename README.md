@@ -40,3 +40,13 @@ npm run build
 You can preview the production build with `npm run preview`.
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+
+
+## Future schema changes
+
+```
+bunx drizzle-kit generate                                                      # creates
+drizzle/<NNNN>_<name>.sql
+bunx wrangler d1 execute timetracker-db --remote --file=./drizzle/<NNNN>_*.sql # apply to prod
+git push
+```

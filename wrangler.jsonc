@@ -5,5 +5,12 @@
 	"compatibility_flags": [
 		"nodejs_als"
 	],
-	"pages_build_output_dir": ".svelte-kit/cloudflare"
+	"pages_build_output_dir": ".svelte-kit/cloudflare",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "timetracker-db",
+			"database_id": "57898484-786f-464c-9a06-0bf7b1afbb33"
+		}
+	]
 }

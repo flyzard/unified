@@ -6,11 +6,14 @@ declare global {
 			env: Env;
 			ctx: ExecutionContext;
 			caches: CacheStorage;
-			cf?: IncomingRequestCfProperties
+			cf?: IncomingRequestCfProperties;
+		}
+
+		interface Locals {
+			session: { authenticated: boolean };
 		}
 
 		// interface Error {}
-		// interface Locals {}
 		// interface PageData {}
 		// interface PageState {}
 	}
