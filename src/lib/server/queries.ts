@@ -62,7 +62,7 @@ export async function listTasksForPicker(db: DB) {
 		.from(tasks)
 		.innerJoin(projects, eq(tasks.projectId, projects.id))
 		.where(isNull(tasks.deletedAt))
-		.orderBy(projects.archived, projects.name, tasks.name);
+		.orderBy(projects.archived, projects.name, tasks.sortOrder);
 }
 
 // Soft-delete task, stop running timer if it was on this task,

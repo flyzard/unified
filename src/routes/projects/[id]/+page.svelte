@@ -121,6 +121,29 @@
 					</button>
 				</form>
 
+				{#if !t.done}
+					<div class="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition">
+						<form method="POST" action="?/moveUp" use:enhance>
+							<input type="hidden" name="taskId" value={t.id} />
+							<button
+								class="flex h-4 w-4 items-center justify-center rounded text-zinc-500 hover:text-zinc-200 transition"
+								aria-label="Move up"
+							>
+								<svg class="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="2,8 6,4 10,8" /></svg>
+							</button>
+						</form>
+						<form method="POST" action="?/moveDown" use:enhance>
+							<input type="hidden" name="taskId" value={t.id} />
+							<button
+								class="flex h-4 w-4 items-center justify-center rounded text-zinc-500 hover:text-zinc-200 transition"
+								aria-label="Move down"
+							>
+								<svg class="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="2,4 6,8 10,4" /></svg>
+							</button>
+						</form>
+					</div>
+				{/if}
+
 				<a
 					href="/projects/{data.project.id}/tasks/{t.id}"
 					class="min-w-0 flex-1 truncate text-zinc-100 transition hover:text-white"

@@ -21,6 +21,7 @@ export const tasks = sqliteTable(
 		name: text('name').notNull(),
 		description: text('description'),
 		done: integer('done', { mode: 'boolean' }).notNull().default(false),
+		sortOrder: integer('sort_order').notNull().default(0),
 		deletedAt: text('deleted_at'),
 		createdAt: text('created_at')
 			.notNull()

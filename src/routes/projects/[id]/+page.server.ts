@@ -1,6 +1,6 @@
 import type { PageServerLoad, Actions } from './$types';
 import { error, fail } from '@sveltejs/kit';
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lt, sql, desc, asc } from 'drizzle-orm';
 import { parseId, requireDb } from '$lib/server/db';
 import { projects, tasks, timeEntries } from '$lib/server/schema';
 import { getRunningEntry, getTaskInProject, startTimer, stopTimer } from '$lib/server/queries';
@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 			.select()
 			.from(tasks)
 			.where(and(eq(tasks.projectId, id), isNull(tasks.deletedAt)))
-			.orderBy(tasks.done, tasks.name),
+			.orderBy(tasks.done, tasks.sortOrder),
 		db
 			.select({
 				taskId: timeEntries.taskId,
@@ -67,7 +67,11 @@ export const actions: Actions = {
 		const data = await request.formData();
 		const name = String(data.get('name') ?? '').trim();
 		if (!name) return fail(400, { error: 'task name required' });
-		await db.insert(tasks).values({ projectId: id, name });
+		const [{ max }] = await db
+			.select({ max: sql<number>`COALESCE(MAX(${tasks.sortOrder}), -1)` })
+			.from(tasks)
+			.where(and(eq(tasks.projectId, id), isNull(tasks.deletedAt)));
+		await db.insert(tasks).values({ projectId: id, name, sortOrder: max + 1 });
 		return { ok: true };
 	},
 
@@ -100,6 +104,72 @@ export const actions: Actions = {
 	stop: async ({ platform }) => {
 		const db = requireDb(platform);
 		await stopTimer(db);
+		return { ok: true };
+	},
+
+	moveUp: async ({ params, request, platform }) => {
+		const projectId = parseId(params.id);
+		if (projectId === null) return fail(400, { error: 'bad project id' });
+		const db = requireDb(platform);
+		const data = await request.formData();
+		const taskId = parseId(data.get('taskId')?.toString());
+		if (taskId === null) return fail(400, { error: 'bad task id' });
+
+		const [current] = await db.select().from(tasks).where(eq(tasks.id, taskId));
+		if (!current) return fail(404, { error: 'task not found' });
+
+		const [prev] = await db
+			.select()
+			.from(tasks)
+			.where(
+				and(
+					eq(tasks.projectId, projectId),
+					eq(tasks.done, current.done),
+					lt(tasks.sortOrder, current.sortOrder),
+					isNull(tasks.deletedAt)
+				)
+			)
+			.orderBy(desc(tasks.sortOrder))
+			.limit(1);
+		if (!prev) return { ok: true };
+
+		await db.batch([
+			db.update(tasks).set({ sortOrder: prev.sortOrder }).where(eq(tasks.id, current.id)),
+			db.update(tasks).set({ sortOrder: current.sortOrder }).where(eq(tasks.id, prev.id))
+		]);
+		return { ok: true };
+	},
+
+	moveDown: async ({ params, request, platform }) => {
+		const projectId = parseId(params.id);
+		if (projectId === null) return fail(400, { error: 'bad project id' });
+		const db = requireDb(platform);
+		const data = await request.formData();
+		const taskId = parseId(data.get('taskId')?.toString());
+		if (taskId === null) return fail(400, { error: 'bad task id' });
+
+		const [current] = await db.select().from(tasks).where(eq(tasks.id, taskId));
+		if (!current) return fail(404, { error: 'task not found' });
+
+		const [next] = await db
+			.select()
+			.from(tasks)
+			.where(
+				and(
+					eq(tasks.projectId, projectId),
+					eq(tasks.done, current.done),
+					gt(tasks.sortOrder, current.sortOrder),
+					isNull(tasks.deletedAt)
+				)
+			)
+			.orderBy(asc(tasks.sortOrder))
+			.limit(1);
+		if (!next) return { ok: true };
+
+		await db.batch([
+			db.update(tasks).set({ sortOrder: next.sortOrder }).where(eq(tasks.id, current.id)),
+			db.update(tasks).set({ sortOrder: current.sortOrder }).where(eq(tasks.id, next.id))
+		]);
 		return { ok: true };
 	}
 };
